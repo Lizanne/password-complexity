@@ -5,3 +5,7 @@ dist
 .vite
 .env
 .env.local
+
+# Internal design-process artifacts — local only, not for GitHub
+docs/designpowers/
+design-state.md

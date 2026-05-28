@@ -32,14 +32,12 @@ function BackArrow() {
 
 function ProgressAvatar() {
   /* Arc: 87.5% (315° of 360°) — Step 7 of 8.
-     Circle centred at (21,21), radius 19 (within 42×42 viewBox, strokeWidth 4 → fits well).
-     Start: top (21, 2). End: 315° clockwise from top = (7.56, 7.56).
-     large-arc-flag=1 (arc > 180°), sweep-flag=1 (clockwise in SVG coords). */
+     Rendered at 39×39 per Figma 22017:1481 (was 42×42); viewBox stays 42 so geometry preserves. */
   return (
     <svg
       role="img"
-      width="42"
-      height="42"
+      width="39"
+      height="39"
       viewBox="0 0 42 42"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
