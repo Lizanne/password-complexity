@@ -79,7 +79,7 @@ export default function RegistrationHeader({ onBack }) {
     <header
       style={{
         background: '#fff',
-        padding: '13px 31px',
+        padding: '13px 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
