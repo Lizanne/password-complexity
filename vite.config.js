@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   plugins: [react()],
-  // GitHub Pages serves at /password-complexity/ — use base in production builds only.
-  base: command === 'build' ? '/password-complexity/' : '/',
-}))
+  // Relative base ('./') so the build works at any deploy root:
+  //   - GitHub Pages:  https://lizanne.github.io/password-complexity/
+  //   - Vercel:        https://password-complexity.vercel.app/
+  // Assets resolve relative to index.html in both.
+  base: './',
+})
