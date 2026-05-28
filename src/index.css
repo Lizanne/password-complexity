@@ -1,0 +1,75 @@
+:root {
+  --color-accent: #378BDA;
+  --color-accent-soft: #E8F0FA;
+  --color-ink: #18181b;
+  --color-heading: #4a4a4a;
+  --color-muted: #52525b;
+  --color-line: #e4e4e7;
+  --color-line-strong: #d4d4d8;
+  --color-bg: #f4f4f5;
+  --color-card: #ffffff;
+  --color-amber: #B8894A;
+  --color-disabled: #C8C5BD;
+  --color-surface: #EFECE5;
+
+  /* Purpose-designed meter palette — two-state rewrite 2026-05-26.
+     Supersedes: four-tier amber/blue palette (Weak/Fair/Good/Strong).
+     REMOVED tokens (superseded — do not use):
+       --color-meter-weak-fill:   #A66C25  (amber, four-tier)
+       --color-meter-fair-fill:   #B37726  (amber, four-tier)
+       --color-meter-good-fill:   #2878C8  (blue, four-tier)
+       --color-meter-strong-fill: #1558A0  (blue, four-tier)
+       --color-meter-weak-text:   #6F4A1C  (amber label, four-tier) — repurposed below
+       --color-meter-good-text:   #16548E  (blue label, four-tier) — used in checklist icon inline style, see PasswordField.jsx
+       --color-meter-strong-text: #0F4A80  (blue label, four-tier)
+     NEW tokens (two-state):
+       --color-meter-track          #f4f4f5   inactive segment — very subtle on white; near-invisible in empty state (Figma 2026-05-26)
+       --color-meter-progress-fill  #3f3f3f   grey filled progress — 3.38:1 vs track; 10.53:1 vs white (non-text pass)
+       --color-meter-strong-fill    #1E7A3A   green all-rules-met — 5.38:1 vs white; 4.90:1 vs #f4f4f5 (non-text pass)
+       --color-meter-strong-text    #0E5128   deep green label — 9.43:1 vs white; 8.58:1 vs #f4f4f5 (AAA text, 7:1)
+       --color-meter-weak-text      repurposed → mapped to --color-muted (#52525b) for neutral Weak label
+                                    No new token; CSS references --color-muted directly (7.64:1 vs white, AAA)
+  */
+  --color-meter-track: #E4E4E7;           /* User direction 2026-05-26 — slightly more visible than #f4f4f5 */
+  --color-meter-progress-fill: #DC2626;   /* red weak fill — #DC2626 (brief 2026-05-26: differentiated from field error #B91C1C; was #B91C1C) */
+  --color-meter-progress-text: #B91C1C;   /* red weak label text — #B91C1C (brief 2026-05-26: intentionally differs from bar fill; 7.45:1 vs white, AAA) */
+  --color-meter-strong-fill:   #15803D;   /* green strong — user direction 2026-05-26 (was #1E7A3A) */
+  --color-meter-strong-text:   #15803D;   /* green strong label — user direction 2026-05-26 (was #0E5128) */
+  /* --color-meter-good-text kept for checklist icon inline style in PasswordField.jsx */
+  --color-meter-good-text: #16548E;       /* met checklist icon colour — retained, not part of meter */
+  --color-field-focus: #1E5FA8;
+  --color-field-error: #B91C1C;       /* red — brief 2026-05-26 overrides P4 amber-brown; field error border + submit message text (7.45:1 vs white, AAA) */
+
+  /* Spacing tokens */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-checklist-item: 8px;        /* gap between checklist rows — updated to Figma spec 2026-05-26 (was 10px) */
+  --space-meter-label: 6px;           /* gap between meter bar and tier label text */
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+
+  /* Easing curves */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  min-height: 100dvh;
+  background: #fff;          /* production screen: white full-screen — rework 2026-05-26 */
+  color: var(--color-ink);
+  font-family: 'Figtree', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
