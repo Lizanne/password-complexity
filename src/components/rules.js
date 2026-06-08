@@ -25,22 +25,10 @@ export const RULES = [
     check: (password) => password.length >= 8,
   },
   {
-    id: 'lowercase',
-    label: 'One lowercase letter',
-    mandatory: true,
-    check: (password) => /[a-z]/.test(password),
-  },
-  {
     id: 'special',
     label: 'One special character (like ! @ £)',
     mandatory: true,
     check: (password) => /[^A-Za-z0-9]/.test(password),
-  },
-  {
-    id: 'uppercase',
-    label: 'One uppercase letter',
-    mandatory: true,
-    check: (password) => /[A-Z]/.test(password),
   },
   {
     id: 'number',
@@ -60,11 +48,9 @@ export const MAX_LENGTH = 128;
  * Updated to "One X" convention (Figma 2026-05-26).
  */
 export const HINT_MESSAGES = {
-  length:    'Make it at least 8 characters to continue.',
-  lowercase: 'Add a lowercase letter to continue.',
-  special:   'Add a special character to continue.',
-  uppercase: 'Add an uppercase letter to continue.',
-  number:    'Add a number to continue.',
+  length:  'Make it at least 8 characters to continue.',
+  special: 'Add a special character to continue.',
+  number:  'Add a number to continue.',
 };
 
 /**

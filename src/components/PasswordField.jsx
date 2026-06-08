@@ -35,7 +35,7 @@
  *     - Field error slot (SLOT 3) old rendering replaced by submit message slot
  *
  * What is unchanged:
- *   - Rule set (5 rules, all mandatory), MIN_LENGTH/MAX_LENGTH
+ *   - Rule set (3 rules, all mandatory — uppercase + lowercase removed 2026-06-08), MIN_LENGTH/MAX_LENGTH
  *   - Blacklist check (BLACKLIST_CHECK flag, on-blur trigger, cache, AbortController)
  *   - Rejection notice (SLOT 2) — still below checklist, flag-gated
  *   - externalError prop (server-side errors)
@@ -97,18 +97,14 @@ const COPY = {
      */
     strengthChange: (label) => `Password strength: ${label}`,
     ruleMet: {
-      length:    'Length met — 8 or more characters',
-      uppercase: 'Uppercase letter added',
-      lowercase: 'Lowercase letter added',
-      number:    'Number included',
-      special:   'Special character added',
+      length:  'Length met — 8 or more characters',
+      number:  'Number included',
+      special: 'Special character added',
     },
     ruleBroken: {
-      length:    'Length no longer met — need 8 or more characters',
-      uppercase: 'Uppercase letter no longer included',
-      lowercase: 'Lowercase letter no longer included',
-      number:    'Number no longer included',
-      special:   'Special character removed',
+      length:  'Length no longer met — need 8 or more characters',
+      number:  'Number no longer included',
+      special: 'Special character removed',
     },
     submitThreshold: 'Your password meets the requirements. You can continue.',
   },
@@ -326,37 +322,28 @@ function CircleCheckIcon({ size = 16 }) {
  * submit message slot, or null if all rules are met (slot should be hidden).
  *
  * Rule order for pair-key construction matches checklist order:
- *   length → lowercase → special → uppercase → number
- * Keys are sorted pairs: 'length+lowercase', 'length+special', etc.
+ *   length → special → number
+ * Keys are sorted pairs: 'length+special', 'length+number', etc.
  *
  * See docs/designpowers/copy.md §11.1 for the full table.
  */
 const SUBMIT_MESSAGES = {
   empty: 'Enter a password',
   single: {
-    length:    'Use at least 8 characters',
-    lowercase: 'Add a lowercase letter',
-    special:   'Add a special character',
-    uppercase: 'Add an uppercase letter',
-    number:    'Add a number',
+    length:  'Use at least 8 characters',
+    special: 'Add a special character',
+    number:  'Add a number',
   },
   pair: {
-    'length+lowercase':   'Use at least 8 characters and add a lowercase letter',
-    'length+special':     'Use at least 8 characters and add a special character',
-    'length+uppercase':   'Use at least 8 characters and add an uppercase letter',
-    'length+number':      'Use at least 8 characters and add a number',
-    'lowercase+special':  'Add a lowercase letter and a special character',
-    'lowercase+uppercase':'Add a lowercase letter and an uppercase letter',
-    'lowercase+number':   'Add a lowercase letter and a number',
-    'special+uppercase':  'Add a special character and an uppercase letter',
-    'special+number':     'Add a special character and a number',
-    'uppercase+number':   'Add an uppercase letter and a number',
+    'length+special': 'Use at least 8 characters and add a special character',
+    'length+number':  'Use at least 8 characters and add a number',
+    'special+number': 'Add a special character and a number',
   },
   generic: 'Your password needs a few more things',
 };
 
-/* Ordered rule IDs — matches checklist display order */
-const RULE_ORDER = ['length', 'lowercase', 'special', 'uppercase', 'number'];
+/* Ordered rule IDs — matches checklist display order. Uppercase + lowercase removed 2026-06-08. */
+const RULE_ORDER = ['length', 'special', 'number'];
 
 function computeSubmitMessage(value, ruleResults) {
   if (!value || value.length === 0) return SUBMIT_MESSAGES.empty;
@@ -374,7 +361,8 @@ const PasswordField = forwardRef(function PasswordField({
   onBlacklistStatusChange,
   externalError = null,
 }, ref) {
-  // DD-011 fix: SSR-safe reveal default.
+  // Password is hidden by default (type="password" — dots). User toggles via the
+  // eye button. No viewport/context auto-reveal — dots stay dots until toggled.
   const [password, setPassword] = useState('');
   const [isRevealed, setIsRevealed] = useState(false);
   const [hasTyped, setHasTyped] = useState(false);
@@ -392,7 +380,7 @@ const PasswordField = forwardRef(function PasswordField({
   // Strength state — computed on debounce. Two-state model (2026-05-26).
   const [strengthResult, setStrengthResult] = useState({
     rulesMet:    0,
-    ruleResults: { length: false, uppercase: false, lowercase: false, number: false, special: false },
+    ruleResults: { length: false, number: false, special: false },
     segmentsLit: 0,
     isStrong:    false,
     isValid:     false,
@@ -401,8 +389,6 @@ const PasswordField = forwardRef(function PasswordField({
   // Track which rules were previously met for regression detection
   const [ruleWasMet, setRuleWasMet] = useState({
     length: false,
-    uppercase: false,
-    lowercase: false,
     number: false,
     special: false,
   });
@@ -422,14 +408,6 @@ const PasswordField = forwardRef(function PasswordField({
 
   // Live region string
   const [liveText, setLiveText] = useState('');
-
-  // DD-011 fix: post-mount effect sets reveal default based on viewport + context.
-  useEffect(() => {
-    if (context !== 'settings' && window.innerWidth < 768) {
-      setIsRevealed(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Intentionally empty: run once on mount only
 
   // Tracks previous isStrong value for live region gate (announce only on Weak↔Strong transition)
   const prevIsStrongRef = useRef(null);
@@ -626,7 +604,7 @@ const PasswordField = forwardRef(function PasswordField({
             }
           }
 
-          /* 3. Submit threshold — announced when crossing into Strong (all 5 rules met) */
+          /* 3. Submit threshold — announced when crossing into Strong (all 3 rules met) */
           if (isStateChange && newIsStrong) {
             const lastDelay = queue.length > 0 ? queue[queue.length - 1].delay + 100 : 0;
             queue.push({ msg: COPY.liveRegion.submitThreshold, delay: lastDelay });
@@ -857,9 +835,9 @@ const PasswordField = forwardRef(function PasswordField({
       : null;
 
   // Meter state — three values, internal name decoupled from the player-facing label:
-  //   'strong'        → all 5 rules met, no constraint violated
-  //   'not-accepted'  → all 5 rules met AND a constraint gate is violated
-  //   'weak'          → anything else (fewer than 5 rules met)
+  //   'strong'        → all 3 rules met, no constraint violated
+  //   'not-accepted'  → all 3 rules met AND a constraint gate is violated
+  //   'weak'          → anything else (fewer than 3 rules met)
   // The `not-accepted` state only fires when the meter would otherwise be Strong.
   // When the constraint is violated but the additive rules aren't all met, the
   // meter stays Weak — the rejection message in the error slot does the talking.
@@ -1099,7 +1077,7 @@ const PasswordField = forwardRef(function PasswordField({
            *   Active + !isStrong → pf-meter-segment--progress (grey higher-emphasis)
            *   Backward transition: pf-meter-segment--backward modifier
            *
-           * State change effect (4→5 rules): all 3 segments crossfade grey→green simultaneously
+           * State change effect (2→3 rules): all 3 segments crossfade grey→green simultaneously
            * because all share the same isStrong flag — no per-segment stagger needed.
            */}
           <div
