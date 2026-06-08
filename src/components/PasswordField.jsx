@@ -55,6 +55,12 @@ import './PasswordField.css';
 import { RULES, MIN_LENGTH, MAX_LENGTH } from './rules.js';
 import { computeStrength } from '../hooks/useStrength.js';
 import { checkPassword } from '../lib/passwordCheck.js';
+import {
+  COMMON_PASSWORDS,
+  hasConsecutiveRepeats,
+  REJECTION_MESSAGE_REPEATS,
+  REJECTION_MESSAGE_COMMON,
+} from '../lib/commonPasswords.js';
 import { FEATURES } from '../config/features.js';
 
 /* ─── Copy strings — two-state meter rewrite 2026-05-26 ─── */
@@ -64,8 +70,9 @@ import { FEATURES } from '../config/features.js';
  *   tierDescriptions: [...]                          → deprecated; see copy.md §Deprecated
  *   TIER_NAMES: ['weak', 'fair', 'good', 'strong']  → replaced by two-state CSS modifiers
  */
-const LABEL_WEAK   = 'Weak';
-const LABEL_STRONG = 'Strong';
+const LABEL_WEAK         = 'Weak';
+const LABEL_STRONG       = 'Strong';
+const LABEL_NOT_ACCEPTED = 'Not strong enough';
 
 const COPY = {
   label: {
@@ -408,6 +415,11 @@ const PasswordField = forwardRef(function PasswordField({
   // 'idle' | 'checking' | 'accepted' | 'rejected' | 'timeout'
   const [blacklistStatus, setBlacklistStatus] = useState('idle');
 
+  // Common-password constraint state — set on blur if value is in COMMON_PASSWORDS,
+  // cleared on keystroke once the value no longer matches the list. The repeats
+  // constraint is derived live from the password value (no state needed).
+  const [commonActive, setCommonActive] = useState(false);
+
   // Live region string
   const [liveText, setLiveText] = useState('');
 
@@ -672,6 +684,12 @@ const PasswordField = forwardRef(function PasswordField({
         // Reset interaction state when field is fully cleared
         setHasInteracted(false);
         setBorderState('neutral');
+        setCommonActive(false);
+      }
+      // Common-password constraint: clear the flag if the programmatic fill no
+      // longer matches the list (parity with handlePasswordChange).
+      if (value.length > 0 && !COMMON_PASSWORDS.includes(value)) {
+        setCommonActive(false);
       }
       scheduleStrengthUpdate(value);
       // No blacklist call here — check fires on blur or on Next tap via fireBlacklistCheck
@@ -750,6 +768,13 @@ const PasswordField = forwardRef(function PasswordField({
       setBlacklistStatus('idle');
     }
 
+    // Common-password constraint: clear the flag once the live value no longer
+    // matches the list (player edited away from the rejected password). The
+    // flag is only re-set on the next blur — never live, per spec.
+    if (commonActive && !COMMON_PASSWORDS.includes(value)) {
+      setCommonActive(false);
+    }
+
     scheduleStrengthUpdate(value);
     // No blacklist call here — check fires on blur (handleBlur) or on Next tap
     // via the imperative fireBlacklistCheck handle.
@@ -792,6 +817,14 @@ const PasswordField = forwardRef(function PasswordField({
     if (FEATURES.BLACKLIST_CHECK) {
       runBlacklistCheck(password);
     }
+
+    // ─── On-blur common-password constraint check ───
+    // Treated as if it were an async server call (per spec): fires on blur only,
+    // never on keystroke. Case-sensitive list lookup. The flag stays true until
+    // handlePasswordChange clears it (value no longer matches the list).
+    if (password.length > 0 && COMMON_PASSWORDS.includes(password)) {
+      setCommonActive(true);
+    }
   }
 
   // ─── Toggle ───
@@ -811,8 +844,37 @@ const PasswordField = forwardRef(function PasswordField({
   // User override 2026-05-26: meter track + checklist always visible on page load.
   const showMeter = true;
   const showLabel = hasTyped && password.length > 0;
-  // The label text: Strong only when all 5 rules met; Weak for everything else (post-typing)
-  const meterLabel = isStrong ? LABEL_STRONG : LABEL_WEAK;
+
+  // ─── Constraint gates (2026-06-08) ─────────────────────────────────────────
+  // Repeats: derived live from the password value (keystroke-immediate).
+  // Common:  driven by commonActive state — set on blur, cleared on edit.
+  // Precedence (when both could show): repeats wins over common.
+  const repeatsActive = hasConsecutiveRepeats(password);
+  const constraintMessage = repeatsActive
+    ? REJECTION_MESSAGE_REPEATS
+    : commonActive
+      ? REJECTION_MESSAGE_COMMON
+      : null;
+
+  // Meter state — three values, internal name decoupled from the player-facing label:
+  //   'strong'        → all 5 rules met, no constraint violated
+  //   'not-accepted'  → all 5 rules met AND a constraint gate is violated
+  //   'weak'          → anything else (fewer than 5 rules met)
+  // The `not-accepted` state only fires when the meter would otherwise be Strong.
+  // When the constraint is violated but the additive rules aren't all met, the
+  // meter stays Weak — the rejection message in the error slot does the talking.
+  const meterState =
+    isStrong && (repeatsActive || commonActive)
+      ? 'not-accepted'
+      : isStrong
+        ? 'strong'
+        : 'weak';
+  const meterLabel =
+    meterState === 'not-accepted'
+      ? LABEL_NOT_ACCEPTED
+      : meterState === 'strong'
+        ? LABEL_STRONG
+        : LABEL_WEAK;
 
   // Floating label lift condition
   const primaryLifted = isFieldFocused || password.length > 0;
@@ -824,12 +886,18 @@ const PasswordField = forwardRef(function PasswordField({
     ? computeSubmitMessage(password, ruleResults)
     : null;
 
+  // Final message for the field-error slot. Constraint gates take precedence
+  // over the additive submitMessage — only one message in the slot at a time.
+  // The repeats message can appear pre-interaction (live on keystroke); the
+  // common message only after blur sets commonActive.
+  const displayedMessage = constraintMessage || submitMessage;
+
   // ARIA describedby for the password input
   // Submit message takes priority when present; rejection notice is secondary info
   const ariaDescribedBy = [
     helperId,
     context === 'reset' ? infoBoxId : null,
-    submitMessage ? submitMsgId : null,
+    displayedMessage ? submitMsgId : null,
     blacklistStatus === 'rejected' ? rejectionNoticeId : null,
     errorMsg ? errorId : null,
   ]
@@ -951,15 +1019,15 @@ const PasswordField = forwardRef(function PasswordField({
         id={submitMsgId}
         aria-live="polite"
         aria-atomic="true"
-        aria-hidden={submitMessage ? undefined : 'true'}
-        className={['pf-field-error', submitMessage ? 'pf-field-error--visible' : ''].filter(Boolean).join(' ')}
+        aria-hidden={displayedMessage ? undefined : 'true'}
+        className={['pf-field-error', displayedMessage ? 'pf-field-error--visible' : ''].filter(Boolean).join(' ')}
       >
-        {submitMessage && (
+        {displayedMessage && (
           <>
             <span className="pf-error__icon" aria-hidden="true">
               <CircleAlertIcon size={16} />
             </span>
-            {submitMessage}
+            {displayedMessage}
           </>
         )}
       </div>
@@ -1000,7 +1068,13 @@ const PasswordField = forwardRef(function PasswordField({
             <span
               className={[
                 'pf-meter-label',
-                showLabel ? (isStrong ? 'pf-meter-label--strong' : 'pf-meter-label--weak') : '',
+                showLabel
+                  ? (meterState === 'not-accepted'
+                      ? 'pf-meter-label--not-accepted'
+                      : meterState === 'strong'
+                        ? 'pf-meter-label--strong'
+                        : 'pf-meter-label--weak')
+                  : '',
                 !showLabel ? 'pf-meter-label--hidden' : '',
               ]
                 .filter(Boolean)
@@ -1036,7 +1110,7 @@ const PasswordField = forwardRef(function PasswordField({
             aria-valuenow={hasTyped && password.length > 0 ? segmentsLit : 0}
             aria-valuetext={
               hasTyped && password.length > 0
-                ? (isStrong ? LABEL_STRONG : LABEL_WEAK)
+                ? meterLabel
                 : 'Not rated yet'
             }
             aria-describedby={meterDescId}
@@ -1046,7 +1120,13 @@ const PasswordField = forwardRef(function PasswordField({
               const isActive = hasTyped && password.length > 0 && segIndex < segmentsLit;
               const segClass = ['pf-meter-segment'];
               if (isActive) {
-                segClass.push(isStrong ? 'pf-meter-segment--strong' : 'pf-meter-segment--progress');
+                if (meterState === 'not-accepted') {
+                  segClass.push('pf-meter-segment--not-accepted');
+                } else if (isStrong) {
+                  segClass.push('pf-meter-segment--strong');
+                } else {
+                  segClass.push('pf-meter-segment--progress');
+                }
                 if (!isForward) segClass.push('pf-meter-segment--backward');
               }
               return (
