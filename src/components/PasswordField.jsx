@@ -627,7 +627,14 @@ const PasswordField = forwardRef(function PasswordField({
       });
 
       if (onChange) {
-        onChange(value, result.isValid);
+        // Reported isValid factors in BOTH the additive rules AND the constraint
+        // gates (repeats, common-password). The local strengthResult.isValid
+        // is "all rules met" — useful for the meter — but for the parent's
+        // submission gate we also need to block a constraint failure, so a
+        // password like Password1! (all rules met, but on the common list)
+        // never reports as submittable.
+        const constraintViolated = hasConsecutiveRepeats(value) || isWeakOrCommon(value);
+        onChange(value, result.isValid && !constraintViolated);
       }
     }, 300);
   }, [onChange]);
@@ -966,6 +973,7 @@ const PasswordField = forwardRef(function PasswordField({
           spellCheck="false"
           autoCapitalize="none"
           autoCorrect="off"
+          enterKeyHint="next"
           data-form-type="password"
           placeholder=""
         />
