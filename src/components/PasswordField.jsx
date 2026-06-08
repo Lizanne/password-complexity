@@ -328,6 +328,12 @@ function CircleCheckIcon({ size = 16 }) {
  *
  * See docs/designpowers/copy.md §11.1 for the full table.
  */
+/*
+ * Message family — covers the 3-rule additive matrix.
+ *   - single[id]:  one rule unmet
+ *   - pair[a+b]:   two rules unmet — keys are sorted by RULE_ORDER
+ *   - generic:     three (or more) rules unmet — falls through to a calm catch-all
+ */
 const SUBMIT_MESSAGES = {
   empty: 'Enter a password',
   single: {
@@ -343,7 +349,7 @@ const SUBMIT_MESSAGES = {
   generic: 'Your password needs a few more things',
 };
 
-/* Ordered rule IDs — matches checklist display order. 3-rule model. */
+/* Ordered rule IDs — matches checklist display order; load-bearing for pair keys. */
 const RULE_ORDER = ['length', 'special', 'number'];
 
 function computeSubmitMessage(value, ruleResults) {
