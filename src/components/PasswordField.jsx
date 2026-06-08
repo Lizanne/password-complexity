@@ -408,11 +408,6 @@ const PasswordField = forwardRef(function PasswordField({
   // 'idle' | 'checking' | 'accepted' | 'rejected' | 'timeout'
   const [blacklistStatus, setBlacklistStatus] = useState('idle');
 
-  // Common-password constraint state — set on blur if value is in COMMON_PASSWORDS,
-  // cleared on keystroke once the value no longer matches the list. The repeats
-  // constraint is derived live from the password value (no state needed).
-  const [commonActive, setCommonActive] = useState(false);
-
   // Live region string
   const [liveText, setLiveText] = useState('');
 
@@ -669,12 +664,6 @@ const PasswordField = forwardRef(function PasswordField({
         // Reset interaction state when field is fully cleared
         setHasInteracted(false);
         setBorderState('neutral');
-        setCommonActive(false);
-      }
-      // Common-password constraint: clear the flag if the programmatic fill no
-      // longer matches the list (parity with handlePasswordChange).
-      if (value.length > 0 && !isWeakOrCommon(value)) {
-        setCommonActive(false);
       }
       scheduleStrengthUpdate(value);
       // No blacklist call here — check fires on blur or on Next tap via fireBlacklistCheck
@@ -753,13 +742,6 @@ const PasswordField = forwardRef(function PasswordField({
       setBlacklistStatus('idle');
     }
 
-    // Common-password constraint: clear the flag once the live value no longer
-    // matches the list (player edited away from the rejected password). The
-    // flag is only re-set on the next blur — never live, per spec.
-    if (commonActive && !isWeakOrCommon(value)) {
-      setCommonActive(false);
-    }
-
     scheduleStrengthUpdate(value);
     // No blacklist call here — check fires on blur (handleBlur) or on Next tap
     // via the imperative fireBlacklistCheck handle.
@@ -802,14 +784,9 @@ const PasswordField = forwardRef(function PasswordField({
     if (FEATURES.BLACKLIST_CHECK) {
       runBlacklistCheck(password);
     }
-
-    // ─── On-blur common-password constraint check ───
-    // Treated as if it were an async server call (per spec): fires on blur only,
-    // never on keystroke. Case-sensitive list lookup. The flag stays true until
-    // handlePasswordChange clears it (value no longer matches the list).
-    if (password.length > 0 && isWeakOrCommon(password)) {
-      setCommonActive(true);
-    }
+    // Note: common-password constraint is no longer blur-driven — it's derived
+    // live from the password value (see commonActive in derived state below)
+    // so the meter doesn't lag while typing a known-bad password.
   }
 
   // ─── Toggle ───
@@ -835,10 +812,14 @@ const PasswordField = forwardRef(function PasswordField({
   const showLabel = hasTyped && password.length > 0;
 
   // ─── Constraint gates (2026-06-08) ─────────────────────────────────────────
-  // Repeats: derived live from the password value (keystroke-immediate).
-  // Common:  driven by commonActive state — set on blur, cleared on edit.
+  // Both gates derived live from the password value (keystroke-immediate) —
+  // common-password was previously blur-driven to simulate a server call, but
+  // that caused the meter to lag (showing Strong while typing a known-bad
+  // password like Password1! until blur fired). Synchronous local lookup
+  // means the on-blur delay served no purpose other than introducing the lag.
   // Precedence (when both could show): repeats wins over common.
-  const repeatsActive = hasConsecutiveRepeats(password);
+  const repeatsActive     = hasConsecutiveRepeats(password);
+  const commonActive      = password.length > 0 && isWeakOrCommon(password);
   const constraintMessage = repeatsActive
     ? REJECTION_MESSAGE_REPEATS
     : commonActive
@@ -880,8 +861,7 @@ const PasswordField = forwardRef(function PasswordField({
 
   // Final message for the field-error slot. Constraint gates take precedence
   // over the additive submitMessage — only one message in the slot at a time.
-  // The repeats message can appear pre-interaction (live on keystroke); the
-  // common message only after blur sets commonActive.
+  // Both constraint messages appear pre-interaction (live on keystroke).
   const displayedMessage = constraintMessage || submitMessage;
 
   // ARIA describedby for the password input
