@@ -35,7 +35,8 @@
  *     - Field error slot (SLOT 3) old rendering replaced by submit message slot
  *
  * What is unchanged:
- *   - Rule set (3 rules, all mandatory — uppercase + lowercase removed 2026-06-08), MIN_LENGTH/MAX_LENGTH
+ *   - Rule set (3 additive rules: length, special, number — uppercase + lowercase
+ *     removed 2026-06-08), MIN_LENGTH/MAX_LENGTH
  *   - Blacklist check (BLACKLIST_CHECK flag, on-blur trigger, cache, AbortController)
  *   - Rejection notice (SLOT 2) — still below checklist, flag-gated
  *   - externalError prop (server-side errors)
@@ -98,13 +99,13 @@ const COPY = {
     strengthChange: (label) => `Password strength: ${label}`,
     ruleMet: {
       length:  'Length met — 8 or more characters',
-      number:  'Number included',
       special: 'Special character added',
+      number:  'Number included',
     },
     ruleBroken: {
       length:  'Length no longer met — need 8 or more characters',
-      number:  'Number no longer included',
       special: 'Special character removed',
+      number:  'Number no longer included',
     },
     submitThreshold: 'Your password meets the requirements. You can continue.',
   },
@@ -342,7 +343,7 @@ const SUBMIT_MESSAGES = {
   generic: 'Your password needs a few more things',
 };
 
-/* Ordered rule IDs — matches checklist display order. Uppercase + lowercase removed 2026-06-08. */
+/* Ordered rule IDs — matches checklist display order. 3-rule model. */
 const RULE_ORDER = ['length', 'special', 'number'];
 
 function computeSubmitMessage(value, ruleResults) {
@@ -380,7 +381,7 @@ const PasswordField = forwardRef(function PasswordField({
   // Strength state — computed on debounce. Two-state model (2026-05-26).
   const [strengthResult, setStrengthResult] = useState({
     rulesMet:    0,
-    ruleResults: { length: false, number: false, special: false },
+    ruleResults: { length: false, special: false, number: false },
     segmentsLit: 0,
     isStrong:    false,
     isValid:     false,
@@ -389,8 +390,8 @@ const PasswordField = forwardRef(function PasswordField({
   // Track which rules were previously met for regression detection
   const [ruleWasMet, setRuleWasMet] = useState({
     length: false,
-    number: false,
     special: false,
+    number: false,
   });
 
   // Server-side external error state
@@ -1079,7 +1080,7 @@ const PasswordField = forwardRef(function PasswordField({
            *   Active + !isStrong → pf-meter-segment--progress (grey higher-emphasis)
            *   Backward transition: pf-meter-segment--backward modifier
            *
-           * State change effect (2→3 rules): all 3 segments crossfade grey→green simultaneously
+           * State change effect (2→3 rules): all 3 segments crossfade red→green simultaneously
            * because all share the same isStrong flag — no per-segment stagger needed.
            */}
           <div
