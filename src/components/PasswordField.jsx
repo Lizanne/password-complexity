@@ -884,8 +884,11 @@ const PasswordField = forwardRef(function PasswordField({
 
   // hasInputError: drives aria-invalid on the input. True when:
   // - External server error is present, OR
-  // - Border state is error (blur-driven interaction state)
-  const hasInputError = !!(errorMsg || borderState === 'error');
+  // - Border state is error (blur-driven interaction state), OR
+  // - A constraint gate (repeats / common-password) is currently surfaced.
+  // The constraint message lives in the same slot as additive errors, so the
+  // field underline must reflect error state for the visual to read as one.
+  const hasInputError = !!(errorMsg || borderState === 'error' || constraintMessage);
 
   return (
     <div className="pf-root">
@@ -934,9 +937,8 @@ const PasswordField = forwardRef(function PasswordField({
       <div
         className={[
           'pf-input-wrapper',
-          isFieldFocused && borderState !== 'error' ? 'pf-input-wrapper--focused' : '',
-          borderState === 'error' ? 'pf-input-wrapper--error' : '',
-          errorMsg ? 'pf-input-wrapper--error' : '',
+          isFieldFocused && !hasInputError ? 'pf-input-wrapper--focused' : '',
+          hasInputError ? 'pf-input-wrapper--error' : '',
         ].filter(Boolean).join(' ')}
       >
         {/* Floating label */}
