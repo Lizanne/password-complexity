@@ -43,6 +43,14 @@ export function hasConsecutiveRepeats(password) {
   return /(.)\1\1/.test(password);
 }
 
+// Returns true if the password is in the mock weak/common list. Case-sensitive
+// lookup. Named isWeakOrCommon (rather than isCommon) so the call site reads
+// as the player-facing concept — "weak or common password" — that the rejection
+// message describes. Production swap target: server-side check.
+export function isWeakOrCommon(password) {
+  return COMMON_PASSWORDS.includes(password);
+}
+
 // Player-facing rejection messages for the two constraint gates.
 // Rendered in the existing field-error slot — constraint message takes precedence
 // over the additive submitMessage when both would otherwise appear.
@@ -50,4 +58,4 @@ export const REJECTION_MESSAGE_REPEATS =
   'Your password has too many repeats. Try varying the characters.';
 
 export const REJECTION_MESSAGE_COMMON =
-  'This password is too common. Try something less guessable.';
+  'Your password is too easy to guess. Try something less common.';

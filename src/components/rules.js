@@ -17,6 +17,24 @@
  *   - Rule copy updated to "One X" convention (Figma 2026-05-26)
  */
 
+/**
+ * OR rule (2026-06-08 collapse): passes if password has a digit OR a special
+ * character — one of either is enough; the player doesn't need both. Special
+ * characters are an explicit allowlist (not "anything non-alphanumeric") so
+ * unintentional matches (whitespace, control chars) don't satisfy the rule.
+ */
+export function hasNumberOrSpecial(password) {
+  return /[0-9]/.test(password) || /[!@#$%^&*()_+\-=\[\]{};':",.<>/?\\|~`£€¥]/.test(password);
+}
+
+/**
+ * Uppercase additive rule — re-added 2026-06-08 as the third additive rule.
+ * Lowercase stays removed (allowed in passwords but not required).
+ */
+export function hasUppercase(password) {
+  return /[A-Z]/.test(password);
+}
+
 export const RULES = [
   {
     id: 'length',
@@ -25,16 +43,16 @@ export const RULES = [
     check: (password) => password.length >= 8,
   },
   {
-    id: 'special',
-    label: 'One special character (like ! @ £)',
+    id: 'numberOrSpecial',
+    label: 'One number or special character (like ! @ £)',
     mandatory: true,
-    check: (password) => /[^A-Za-z0-9]/.test(password),
+    check: hasNumberOrSpecial,
   },
   {
-    id: 'number',
-    label: 'One number',
+    id: 'uppercase',
+    label: 'One uppercase letter',
     mandatory: true,
-    check: (password) => /[0-9]/.test(password),
+    check: hasUppercase,
   },
 ];
 
@@ -48,9 +66,9 @@ export const MAX_LENGTH = 128;
  * Updated to "One X" convention (Figma 2026-05-26).
  */
 export const HINT_MESSAGES = {
-  length:  'Make it at least 8 characters to continue.',
-  special: 'Add a special character to continue.',
-  number:  'Add a number to continue.',
+  length:          'Make it at least 8 characters to continue.',
+  numberOrSpecial: 'Add a number or special character to continue.',
+  uppercase:       'Add an uppercase letter to continue.',
 };
 
 /**

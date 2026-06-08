@@ -5,20 +5,23 @@
  * zxcvbn-ts removed entirely. Strength is now determined purely by rule evaluation.
  *
  * The model (2026-06-08):
- *   - 3 rules evaluated (length, special, number) — uppercase + lowercase
- *     removed earlier
+ *   - 3 rules evaluated (length, numberOrSpecial, uppercase) — lowercase
+ *     removed earlier; number+special collapsed into one OR rule; uppercase
+ *     re-added as the third additive rule
  *   - rulesMet: count of met rules (0–3)
- *   - segmentsLit: identity mapping — one segment per rule met
- *       0 rules → 0 of 3 lit (track only)
- *       1 rule  → 1 of 3 lit (red progress)
- *       2 rules → 2 of 3 lit (red progress)
- *       3 rules → 3 of 3 lit (green, isStrong = true)
+ *   - segmentsLit: floored at 1 once the password has any content, so typing
+ *     the first character lights one red segment even before any rule is met:
+ *       empty       → 0 of 3 lit (track only, label hidden)
+ *       0 rules     → 1 of 3 lit (red progress, label "Weak")
+ *       1 rule      → 1 of 3 lit (red progress, label "Weak")
+ *       2 rules     → 2 of 3 lit (red progress, label "Weak")
+ *       3 rules     → 3 of 3 lit (green, isStrong = true, label "Strong")
  *   - isStrong: rulesMet === 3 (all rules)
  *   - isValid:  same as isStrong (submission gate)
  *
  * Returns: {
  *   rulesMet:    number (0–3),
- *   ruleResults: { length, special, number } — booleans,
+ *   ruleResults: { length, numberOrSpecial, uppercase } — booleans,
  *   segmentsLit: 0 | 1 | 2 | 3,
  *   isStrong:    boolean,
  *   isValid:     boolean,
@@ -28,18 +31,10 @@
 import { evaluateRules, allMandatoryMet } from '../components/rules.js';
 
 const EMPTY_RULE_RESULTS = {
-  length:  false,
-  special: false,
-  number:  false,
+  length:          false,
+  numberOrSpecial: false,
+  uppercase:       false,
 };
-
-/**
- * Derive segmentsLit (0–3) from rulesMet (0–3) — identity mapping.
- * Rule count equals segment count, so each met rule lights one segment.
- */
-function segmentsFromRulesMet(rulesMet) {
-  return rulesMet;
-}
 
 export function computeStrength(password) {
   if (!password || password.length === 0) {
@@ -56,10 +51,15 @@ export function computeStrength(password) {
   const rulesMet    = Object.values(ruleResults).filter(Boolean).length;
   const isStrong    = allMandatoryMet(ruleResults); // all 3 rules met
 
+  // Floor at 1 once the password has content — typing the first character
+  // lights one segment even before any rule is met. Empty input keeps the
+  // bar at 0 (handled by the early return above).
+  const segmentsLit = Math.max(1, rulesMet);
+
   return {
     rulesMet,
     ruleResults,
-    segmentsLit: segmentsFromRulesMet(rulesMet),
+    segmentsLit,
     isStrong,
     isValid: isStrong,
   };

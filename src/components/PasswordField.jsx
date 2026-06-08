@@ -35,8 +35,9 @@
  *     - Field error slot (SLOT 3) old rendering replaced by submit message slot
  *
  * What is unchanged:
- *   - Rule set (3 additive rules: length, special, number — uppercase + lowercase
- *     removed 2026-06-08), MIN_LENGTH/MAX_LENGTH
+ *   - Rule set (3 additive rules: length, numberOrSpecial, uppercase — lowercase
+ *     stays removed; number+special collapsed into one OR rule; uppercase re-added
+ *     2026-06-08), MIN_LENGTH/MAX_LENGTH
  *   - Blacklist check (BLACKLIST_CHECK flag, on-blur trigger, cache, AbortController)
  *   - Rejection notice (SLOT 2) — still below checklist, flag-gated
  *   - externalError prop (server-side errors)
@@ -57,8 +58,8 @@ import { RULES, MIN_LENGTH, MAX_LENGTH } from './rules.js';
 import { computeStrength } from '../hooks/useStrength.js';
 import { checkPassword } from '../lib/passwordCheck.js';
 import {
-  COMMON_PASSWORDS,
   hasConsecutiveRepeats,
+  isWeakOrCommon,
   REJECTION_MESSAGE_REPEATS,
   REJECTION_MESSAGE_COMMON,
 } from '../lib/commonPasswords.js';
@@ -71,9 +72,8 @@ import { FEATURES } from '../config/features.js';
  *   tierDescriptions: [...]                          → deprecated; see copy.md §Deprecated
  *   TIER_NAMES: ['weak', 'fair', 'good', 'strong']  → replaced by two-state CSS modifiers
  */
-const LABEL_WEAK         = 'Weak';
-const LABEL_STRONG       = 'Strong';
-const LABEL_NOT_ACCEPTED = 'Not strong enough';
+const LABEL_WEAK   = 'Weak';
+const LABEL_STRONG = 'Strong';
 
 const COPY = {
   label: {
@@ -98,14 +98,14 @@ const COPY = {
      */
     strengthChange: (label) => `Password strength: ${label}`,
     ruleMet: {
-      length:  'Length met — 8 or more characters',
-      special: 'Special character added',
-      number:  'Number included',
+      length:          'Length met — 8 or more characters',
+      numberOrSpecial: 'Number or special character added',
+      uppercase:       'Uppercase letter added',
     },
     ruleBroken: {
-      length:  'Length no longer met — need 8 or more characters',
-      special: 'Special character removed',
-      number:  'Number no longer included',
+      length:          'Length no longer met — need 8 or more characters',
+      numberOrSpecial: 'Number or special character no longer included',
+      uppercase:       'Uppercase letter no longer included',
     },
     submitThreshold: 'Your password meets the requirements. You can continue.',
   },
@@ -323,34 +323,34 @@ function CircleCheckIcon({ size = 16 }) {
  * submit message slot, or null if all rules are met (slot should be hidden).
  *
  * Rule order for pair-key construction matches checklist order:
- *   length → special → number
- * Keys are sorted pairs: 'length+special', 'length+number', etc.
+ *   length → numberOrSpecial → uppercase
+ * Keys are sorted pairs: 'length+numberOrSpecial', 'length+uppercase',
+ * 'numberOrSpecial+uppercase'.
  *
  * See docs/designpowers/copy.md §11.1 for the full table.
  */
 /*
- * Message family — covers the 3-rule additive matrix.
- *   - single[id]:  one rule unmet
- *   - pair[a+b]:   two rules unmet — keys are sorted by RULE_ORDER
- *   - generic:     three (or more) rules unmet — falls through to a calm catch-all
+ * Message family (2026-06-08 — 3 rules: length, numberOrSpecial, uppercase).
+ * 8 strings total: empty + 3 single + 3 pair + 1 generic. Pair keys are
+ * sorted by RULE_ORDER so the unmet-rules array always yields the correct key.
  */
 const SUBMIT_MESSAGES = {
   empty: 'Enter a password',
   single: {
-    length:  'Use at least 8 characters',
-    special: 'Add a special character',
-    number:  'Add a number',
+    length:          'Use at least 8 characters',
+    numberOrSpecial: 'Add a number or special character',
+    uppercase:       'Add an uppercase letter',
   },
   pair: {
-    'length+special': 'Use at least 8 characters and add a special character',
-    'length+number':  'Use at least 8 characters and add a number',
-    'special+number': 'Add a special character and a number',
+    'length+numberOrSpecial':          'Use at least 8 characters and add a number or special character',
+    'length+uppercase':                'Use at least 8 characters and add an uppercase letter',
+    'numberOrSpecial+uppercase':       'Add a number or special character and an uppercase letter',
   },
   generic: 'Your password needs a few more things',
 };
 
 /* Ordered rule IDs — matches checklist display order; load-bearing for pair keys. */
-const RULE_ORDER = ['length', 'special', 'number'];
+const RULE_ORDER = ['length', 'numberOrSpecial', 'uppercase'];
 
 function computeSubmitMessage(value, ruleResults) {
   if (!value || value.length === 0) return SUBMIT_MESSAGES.empty;
@@ -387,7 +387,7 @@ const PasswordField = forwardRef(function PasswordField({
   // Strength state — computed on debounce. Two-state model (2026-05-26).
   const [strengthResult, setStrengthResult] = useState({
     rulesMet:    0,
-    ruleResults: { length: false, special: false, number: false },
+    ruleResults: { length: false, numberOrSpecial: false, uppercase: false },
     segmentsLit: 0,
     isStrong:    false,
     isValid:     false,
@@ -395,9 +395,9 @@ const PasswordField = forwardRef(function PasswordField({
 
   // Track which rules were previously met for regression detection
   const [ruleWasMet, setRuleWasMet] = useState({
-    length: false,
-    special: false,
-    number: false,
+    length:          false,
+    numberOrSpecial: false,
+    uppercase:       false,
   });
 
   // Server-side external error state
@@ -673,7 +673,7 @@ const PasswordField = forwardRef(function PasswordField({
       }
       // Common-password constraint: clear the flag if the programmatic fill no
       // longer matches the list (parity with handlePasswordChange).
-      if (value.length > 0 && !COMMON_PASSWORDS.includes(value)) {
+      if (value.length > 0 && !isWeakOrCommon(value)) {
         setCommonActive(false);
       }
       scheduleStrengthUpdate(value);
@@ -756,7 +756,7 @@ const PasswordField = forwardRef(function PasswordField({
     // Common-password constraint: clear the flag once the live value no longer
     // matches the list (player edited away from the rejected password). The
     // flag is only re-set on the next blur — never live, per spec.
-    if (commonActive && !COMMON_PASSWORDS.includes(value)) {
+    if (commonActive && !isWeakOrCommon(value)) {
       setCommonActive(false);
     }
 
@@ -807,7 +807,7 @@ const PasswordField = forwardRef(function PasswordField({
     // Treated as if it were an async server call (per spec): fires on blur only,
     // never on keystroke. Case-sensitive list lookup. The flag stays true until
     // handlePasswordChange clears it (value no longer matches the list).
-    if (password.length > 0 && COMMON_PASSWORDS.includes(password)) {
+    if (password.length > 0 && isWeakOrCommon(password)) {
       setCommonActive(true);
     }
   }
@@ -828,6 +828,10 @@ const PasswordField = forwardRef(function PasswordField({
   const isForward = prevIsStrongRef.current === null || isStrong || !prevIsStrongRef.current;
   // User override 2026-05-26: meter track + checklist always visible on page load.
   const showMeter = true;
+  // Label visible whenever the player has typed any content — paired with the
+  // segmentsLit floor (computeStrength returns at least 1 segment lit when
+  // password.length > 0), so the bar always shows at least one red segment
+  // when the label reads "Weak".
   const showLabel = hasTyped && password.length > 0;
 
   // ─── Constraint gates (2026-06-08) ─────────────────────────────────────────
@@ -841,25 +845,28 @@ const PasswordField = forwardRef(function PasswordField({
       ? REJECTION_MESSAGE_COMMON
       : null;
 
-  // Meter state — three values, internal name decoupled from the player-facing label:
-  //   'strong'        → all 3 rules met, no constraint violated
-  //   'not-accepted'  → all 3 rules met AND a constraint gate is violated
+  // Meter state — three internal values, two visible labels:
+  //   'strong'        → all 3 rules met, no constraint violated → 3 green + "Strong"
+  //   'not-accepted'  → all 3 rules met BUT a constraint gate is violated → renders
+  //                     visually identical to Weak (1 red segment + "Weak" label).
+  //                     The state is preserved as an internal flag so future logic
+  //                     (e.g. submit-blocking) can distinguish it from regular Weak.
   //   'weak'          → anything else (fewer than 3 rules met)
-  // The `not-accepted` state only fires when the meter would otherwise be Strong.
-  // When the constraint is violated but the additive rules aren't all met, the
-  // meter stays Weak — the rejection message in the error slot does the talking.
+  // The player-facing rejection signal is carried by the error slot copy
+  // and the red field border — not by a third meter label.
   const meterState =
     isStrong && (repeatsActive || commonActive)
       ? 'not-accepted'
       : isStrong
         ? 'strong'
         : 'weak';
-  const meterLabel =
-    meterState === 'not-accepted'
-      ? LABEL_NOT_ACCEPTED
-      : meterState === 'strong'
-        ? LABEL_STRONG
-        : LABEL_WEAK;
+
+  // Visual collapse: not-accepted and weak both render as Weak. effectiveStrong
+  // is the single source of truth the segments + label render against — keeps
+  // the meterState string available for any future non-visual consumer.
+  const effectiveStrong   = meterState === 'strong';
+  const effectiveSegments = meterState === 'not-accepted' ? 1 : segmentsLit;
+  const meterLabel        = effectiveStrong ? LABEL_STRONG : LABEL_WEAK;
 
   // Floating label lift condition
   const primaryLifted = isFieldFocused || password.length > 0;
@@ -1056,11 +1063,7 @@ const PasswordField = forwardRef(function PasswordField({
               className={[
                 'pf-meter-label',
                 showLabel
-                  ? (meterState === 'not-accepted'
-                      ? 'pf-meter-label--not-accepted'
-                      : meterState === 'strong'
-                        ? 'pf-meter-label--strong'
-                        : 'pf-meter-label--weak')
+                  ? (effectiveStrong ? 'pf-meter-label--strong' : 'pf-meter-label--weak')
                   : '',
                 !showLabel ? 'pf-meter-label--hidden' : '',
               ]
@@ -1094,26 +1097,16 @@ const PasswordField = forwardRef(function PasswordField({
             aria-label="Password strength"
             aria-valuemin={0}
             aria-valuemax={3}
-            aria-valuenow={hasTyped && password.length > 0 ? segmentsLit : 0}
-            aria-valuetext={
-              hasTyped && password.length > 0
-                ? meterLabel
-                : 'Not rated yet'
-            }
+            aria-valuenow={hasTyped && password.length > 0 ? effectiveSegments : 0}
+            aria-valuetext={showLabel ? meterLabel : 'Not rated yet'}
             aria-describedby={meterDescId}
             className="pf-meter-bar"
           >
             {[0, 1, 2].map((segIndex) => {
-              const isActive = hasTyped && password.length > 0 && segIndex < segmentsLit;
+              const isActive = hasTyped && password.length > 0 && segIndex < effectiveSegments;
               const segClass = ['pf-meter-segment'];
               if (isActive) {
-                if (meterState === 'not-accepted') {
-                  segClass.push('pf-meter-segment--not-accepted');
-                } else if (isStrong) {
-                  segClass.push('pf-meter-segment--strong');
-                } else {
-                  segClass.push('pf-meter-segment--progress');
-                }
+                segClass.push(effectiveStrong ? 'pf-meter-segment--strong' : 'pf-meter-segment--progress');
                 if (!isForward) segClass.push('pf-meter-segment--backward');
               }
               return (
