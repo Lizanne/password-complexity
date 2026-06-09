@@ -52,7 +52,7 @@
  *   fireBlacklistCheck: () => void — imperative handle (BLACKLIST_CHECK only)
  */
 
-import { useState, useEffect, useRef, useId, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useId, useCallback, forwardRef, useImperativeHandle } from 'react';
 import './PasswordField.css';
 import { RULES, MIN_LENGTH, MAX_LENGTH } from './rules.js';
 import { computeStrength } from '../hooks/useStrength.js';
@@ -418,6 +418,11 @@ const PasswordField = forwardRef(function PasswordField({
   const announceTimersRef = useRef([]);
   /* F8 — ref for scrollIntoView on external error */
   const errorRef = useRef(null);
+  /* Field-error slot ref + multi-line state — drives the icon's vertical
+     alignment. CSS can't detect line wrap, so we measure post-render and
+     toggle a modifier class. */
+  const fieldErrorRef = useRef(null);
+  const [isFieldErrorMultiLine, setIsFieldErrorMultiLine] = useState(false);
   // ─── On-blur blacklist check refs ───
   // Real AbortController for in-flight checks. Aborted when user re-focuses + edits.
   const blacklistAbortRef = useRef(null);
@@ -871,6 +876,22 @@ const PasswordField = forwardRef(function PasswordField({
   // Both constraint messages appear pre-interaction (live on keystroke).
   const displayedMessage = constraintMessage || submitMessage;
 
+  // Measure the field-error slot post-render to decide whether the icon
+  // should sit centred (1 line) or pinned to the first line (2+ lines).
+  // line-height: 20px (set in CSS), so >20px height means the text wrapped.
+  // useLayoutEffect runs before paint, so the class toggle is applied
+  // before the user sees the message.
+  useLayoutEffect(() => {
+    const el = fieldErrorRef.current;
+    if (!el) return;
+    if (!displayedMessage) {
+      // Empty slot — fall back to single-line layout; no measurement needed.
+      setIsFieldErrorMultiLine(false);
+      return;
+    }
+    setIsFieldErrorMultiLine(el.offsetHeight > 20);
+  }, [displayedMessage]);
+
   // ARIA describedby for the password input
   // Submit message takes priority when present; rejection notice is secondary info
   const ariaDescribedBy = [
@@ -998,11 +1019,16 @@ const PasswordField = forwardRef(function PasswordField({
           Icon: CircleAlertIcon (16px), uses currentColor (inherits message colour).
           ─────────────────────────────────────────────────────────────────────────── */}
       <div
+        ref={fieldErrorRef}
         id={submitMsgId}
         aria-live="polite"
         aria-atomic="true"
         aria-hidden={displayedMessage ? undefined : 'true'}
-        className={['pf-field-error', displayedMessage ? 'pf-field-error--visible' : ''].filter(Boolean).join(' ')}
+        className={[
+          'pf-field-error',
+          displayedMessage ? 'pf-field-error--visible' : '',
+          isFieldErrorMultiLine ? 'pf-field-error--multi-line' : '',
+        ].filter(Boolean).join(' ')}
       >
         {displayedMessage && (
           <>
