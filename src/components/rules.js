@@ -1,38 +1,45 @@
 /**
- * Password rules — PRD US-5 rewrite 2026-05-26.
- * Rule order + copy updated to Figma spec 2026-05-26.
+ * Password rules — final-scope rewrite 2026-06-09.
  *
- * Five rules, ALL mandatory (no bonus rule).
- * Order is load-bearing: findFirstMissingRule() iterates this array and returns
- * the first unmet rule — the hint message shown to the user matches that rule's
- * position in the list. Do not reorder without updating HINT_MESSAGES below.
+ * Four additive rules, all mandatory. Order is load-bearing — the checklist
+ * renders RULES.map(...) in order, and findFirstMissingRule() iterates this
+ * array.
  *
- * Supersedes prior rule set: length=10, caseMix (combined), number, symbol-as-bonus.
- * Changes:
- *   - Length threshold: 10 → 8
- *   - caseMix split into two separate rules: uppercase + lowercase
- *   - Symbol rule promoted from bonus to mandatory (required, same circle icons)
- *   - BRIDGING_HINT / F7 / bonus framing are gone
- *   - Rule order updated: length → lowercase → special → uppercase → number (Figma 2026-05-26)
- *   - Rule copy updated to "One X" convention (Figma 2026-05-26)
+ * Earlier drafts went through several rule sets (uppercase, lowercase,
+ * numberOrSpecial, consecutive-repeats constraint, ...). The final agreed
+ * scope is: length, special, number, letter. Uppercase + lowercase do not
+ * exist as separate checks anymore — "A letter" matches any A–Z (case
+ * insensitive). The no-repeats constraint is fully out of scope.
  */
 
 /**
- * OR rule (2026-06-08 collapse): passes if password has a digit OR a special
- * character — one of either is enough; the player doesn't need both. Special
- * characters are an explicit allowlist (not "anything non-alphanumeric") so
- * unintentional matches (whitespace, control chars) don't satisfy the rule.
+ * 8+ characters.
  */
-export function hasNumberOrSpecial(password) {
-  return /[0-9]/.test(password) || /[!@#$%^&*()_+\-=\[\]{};':",.<>/?\\|~`£€¥]/.test(password);
+export function hasMinLength(password) {
+  return password.length >= 8;
 }
 
 /**
- * Uppercase additive rule — re-added 2026-06-08 as the third additive rule.
- * Lowercase stays removed (allowed in passwords but not required).
+ * One special character. Allowlist regex — whitespace and control chars
+ * do NOT count as special, so a leading space alone doesn't satisfy.
  */
-export function hasUppercase(password) {
-  return /[A-Z]/.test(password);
+export function hasSpecial(password) {
+  return /[!@#$%^&*()_+\-=\[\]{};':",.<>/?\\|~`£€¥]/.test(password);
+}
+
+/**
+ * One digit 0–9.
+ */
+export function hasNumber(password) {
+  return /[0-9]/.test(password);
+}
+
+/**
+ * One letter — case-insensitive A–Z. Replaces the previous separate
+ * uppercase + lowercase checks.
+ */
+export function hasLetter(password) {
+  return /[A-Za-z]/.test(password);
 }
 
 export const RULES = [
@@ -40,19 +47,25 @@ export const RULES = [
     id: 'length',
     label: 'At least 8 characters',
     mandatory: true,
-    check: (password) => password.length >= 8,
+    check: hasMinLength,
   },
   {
-    id: 'numberOrSpecial',
-    label: 'One number or special character (like ! @ £)',
+    id: 'special',
+    label: 'A special character (like ! @ £)',
     mandatory: true,
-    check: hasNumberOrSpecial,
+    check: hasSpecial,
   },
   {
-    id: 'uppercase',
-    label: 'One uppercase letter',
+    id: 'number',
+    label: 'A number',
     mandatory: true,
-    check: hasUppercase,
+    check: hasNumber,
+  },
+  {
+    id: 'letter',
+    label: 'A letter',
+    mandatory: true,
+    check: hasLetter,
   },
 ];
 
@@ -60,15 +73,14 @@ export const MIN_LENGTH = 8;
 export const MAX_LENGTH = 128;
 
 /**
- * Hint messages — verbatim from spec, keyed by rule id.
- * Shown when Next is tapped and the rule is the first unmet rule.
- * Order of first-missing-rule lookup matches RULES array order above.
- * Updated to "One X" convention (Figma 2026-05-26).
+ * Hint messages — keyed by rule id. Shown when Next is tapped with one rule
+ * missing. Order of first-missing-rule lookup matches RULES array order above.
  */
 export const HINT_MESSAGES = {
-  length:          'Make it at least 8 characters to continue.',
-  numberOrSpecial: 'Add a number or special character to continue.',
-  uppercase:       'Add an uppercase letter to continue.',
+  length:  'Make it at least 8 characters to continue.',
+  special: 'Add a special character to continue.',
+  number:  'Add a number to continue.',
+  letter:  'Add a letter to continue.',
 };
 
 /**
@@ -90,7 +102,6 @@ export function evaluateRules(password) {
 
 /**
  * Returns true if all mandatory rules are satisfied.
- * (All rules are now mandatory — this is equivalent to allRulesMet.)
  */
 export function allMandatoryMet(ruleResults) {
   return RULES.every((r) => ruleResults[r.id]);
@@ -98,7 +109,7 @@ export function allMandatoryMet(ruleResults) {
 
 /**
  * Returns the id of the first unmet rule, or null if all rules are met.
- * The RULES array order determines which rule is "first" — this is load-bearing.
+ * The RULES array order determines which rule is "first" — load-bearing.
  */
 export function findFirstMissingRule(password) {
   for (const rule of RULES) {

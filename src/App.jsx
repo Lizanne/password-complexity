@@ -40,6 +40,10 @@ import { useState, useRef, useEffect } from 'react';
 import PasswordField from './components/PasswordField.jsx';
 import RegistrationHeader from './components/RegistrationHeader.jsx';
 import { FEATURES } from './config/features.js';
+import {
+  isCommonPassword,
+  hasLeadingOrTrailingSpace,
+} from './lib/commonPasswords.js';
 
 const RADIUS_MD = '9px';
 
@@ -182,27 +186,22 @@ export default function App() {
 
   // ─── Next tap handler ───
   //
-  // State machine (brief 2026-05-26 rewrite — submit messages now internal to PasswordField):
+  // State machine (final-scope rewrite 2026-06-09):
   //
-  //   Path 1: empty or invalid field → markInteracted() + refocus
-  //             (PasswordField shows the count-based submit message)
-  //   Path 2: blacklist rejected (notice already showing) → refocus only
-  //   Path 3: in checking (rare — duplicate tap while button shows Checking…) → no-op
-  //   Path 4: accepted (blur already fired and check completed) → submit
-  //   Path 5: complexity met → submit (or fire blacklist check first if BLACKLIST_CHECK on)
-  //
-  // No longer sets fieldError state — PasswordField owns the submit message.
+  //   Path 1: empty or rules-not-met → markInteracted() + refocus.
+  //             PasswordField shows the count-based submit message; no submit.
+  //   Path 2: all 4 rules met → enter 'submitting' (loading state). After a
+  //             short simulated server delay, run the constraint check:
+  //             - whitespace or common-password violation → exit loading,
+  //               surface the rejection message via setConstraintFlags(),
+  //               refocus the field. No submit.
+  //             - clean → continue to success after the rest of the simulated
+  //               submit round-trip.
   function handleNextTap() {
-    // Path 3: already checking — silent no-op. Button stays in checking state.
-    // Unreachable when BLACKLIST_CHECK is off (buttonMode never reaches 'checking').
-    if (buttonMode === 'checking') return;
-
-    // Do not re-tap if in submitting or success
+    // Do not re-tap during loading / submitting / success
     if (buttonMode !== 'idle') return;
 
-    // Path 1: empty or invalid field → tell PasswordField to show its message
-    // markInteracted() triggers the blur-driven state machine inside PasswordField.
-    // The submit message is computed from current ruleResults by computeSubmitMessage().
+    // Path 1: rules not met → surface the additive submit message
     if (password.length === 0 || !isValid) {
       if (passwordFieldRef.current) {
         passwordFieldRef.current.markInteracted();
@@ -211,50 +210,27 @@ export default function App() {
       return;
     }
 
-    // Path 2: blacklist already rejected — rejection notice is already showing
-    // Unreachable when BLACKLIST_CHECK is off (blacklistStatus never reaches 'rejected').
-    if (FEATURES.BLACKLIST_CHECK && blacklistStatus === 'rejected') {
-      focusInput();
-      return;
-    }
+    // Path 2: all 4 rules met → enter loading state, then run the on-blur
+    // constraint check. Treated as if it were an async server call (it will
+    // be in production); the 400ms delay mimics the latency.
+    setButtonMode('submitting');
+    setTimeout(() => {
+      const whitespace = hasLeadingOrTrailingSpace(password);
+      const common     = isCommonPassword(password);
 
-    // Path 4: accepted (check completed, result is in cache, status = 'accepted')
-    // Unreachable when BLACKLIST_CHECK is off — falls through to Path 5 below.
-    if (FEATURES.BLACKLIST_CHECK && blacklistStatus === 'accepted') {
-      submitForm();
-      return;
-    }
-
-    // Path 5: complexity met — proceed to submit.
-    //
-    // When BLACKLIST_CHECK is ON:
-    //   Subcase A: blacklistStatus === 'checking' — check already in flight (blur fired).
-    //     Enter 'checking' mode and let the resolution useEffect above handle it.
-    //   Subcase B: blacklistStatus === 'idle' — no check run yet (Next tapped before blur).
-    //     Call fireBlacklistCheck, enter 'checking' mode, useEffect resolves.
-    //   Subcase C: blacklistStatus === 'timeout' — previous check timed out, treat as accepted.
-    //
-    // When BLACKLIST_CHECK is OFF:
-    //   No check needed — go straight to submitForm(). This is the only path that runs.
-    if (!FEATURES.BLACKLIST_CHECK) {
-      submitForm();
-      return;
-    }
-
-    if (blacklistStatus === 'timeout') {
-      submitForm();
-      return;
-    }
-
-    // Covers 'idle' and 'checking' (BLACKLIST_CHECK is on at this point)
-    setButtonMode('checking');
-    if (blacklistStatus === 'idle') {
-      // Trigger the check now — this is the "Next tapped before blur" path
-      if (passwordFieldRef.current) {
-        passwordFieldRef.current.fireBlacklistCheck(password);
+      if (whitespace || common) {
+        // Constraint violation → exit loading, surface the rejection message
+        if (passwordFieldRef.current) {
+          passwordFieldRef.current.setConstraintFlags({ common, whitespace });
+        }
+        setButtonMode('idle');
+        focusInput();
+        return;
       }
-    }
-    // If already 'checking', the useEffect above will resolve when it settles.
+
+      // Accepted → finish the simulated submit and show success
+      setTimeout(() => setButtonMode('success'), 800);
+    }, 400);
   }
 
   // ─── Start over — resets all state to initial ───

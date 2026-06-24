@@ -58,23 +58,20 @@ import { RULES, MIN_LENGTH, MAX_LENGTH } from './rules.js';
 import { computeStrength } from '../hooks/useStrength.js';
 import { checkPassword } from '../lib/passwordCheck.js';
 import {
-  hasConsecutiveRepeats,
-  isWeakOrCommon,
-  REJECTION_MESSAGE_REPEATS,
+  isCommonPassword,
+  hasLeadingOrTrailingSpace,
   REJECTION_MESSAGE_COMMON,
+  REJECTION_MESSAGE_WHITESPACE,
 } from '../lib/commonPasswords.js';
 import { FEATURES } from '../config/features.js';
 
-/* ─── Copy strings — two-state meter rewrite 2026-05-26 ─── */
+/* ─── Copy strings — final-scope rewrite 2026-06-09 ─── */
 /*
- * REMOVED (superseded — four-tier system gone):
- *   tierLabels: ['Weak', 'Fair', 'Good', 'Strong']  → replaced by LABEL_WEAK / LABEL_STRONG
- *   tierDescriptions: [...]                          → deprecated; see copy.md §Deprecated
- *   TIER_NAMES: ['weak', 'fair', 'good', 'strong']  → replaced by two-state CSS modifiers
+ * REMOVED (superseded):
+ *   LABEL_WEAK / LABEL_STRONG / not-accepted — strength meter is gone
+ *   strengthChange / submitThreshold live region copy — no meter to announce
+ *   rejectionNotice copy — old constraint-gate UX is gone
  */
-const LABEL_WEAK   = 'Weak';
-const LABEL_STRONG = 'Strong';
-
 const COPY = {
   label: {
     registration: 'Create a password',
@@ -92,25 +89,19 @@ const COPY = {
     hide: 'Hide password',
   },
   liveRegion: {
-    /*
-     * Strength change — only announced on Weak → Strong or Strong → Weak transitions.
-     * Not announced on every keystroke. See scheduleStrengthUpdate for the gate logic.
-     */
-    strengthChange: (label) => `Password strength: ${label}`,
     ruleMet: {
-      length:          'Length met — 8 or more characters',
-      numberOrSpecial: 'Number or special character added',
-      uppercase:       'Uppercase letter added',
+      length:  'Length met — 8 or more characters',
+      special: 'Special character added',
+      number:  'Number included',
+      letter:  'Letter added',
     },
     ruleBroken: {
-      length:          'Length no longer met — need 8 or more characters',
-      numberOrSpecial: 'Number or special character no longer included',
-      uppercase:       'Uppercase letter no longer included',
+      length:  'Length no longer met — need 8 or more characters',
+      special: 'Special character removed',
+      number:  'Number no longer included',
+      letter:  'Letter no longer included',
     },
-    submitThreshold: 'Your password meets the requirements. You can continue.',
   },
-  /* Inline rejection notice — verbatim from spec */
-  rejectionNotice: 'This password is too common — please choose another.',
 };
 
 /* ─── Info icon SVG — used for reset info box only ─── */
@@ -132,29 +123,6 @@ function InfoIcon({ size = 14 }) {
   );
 }
 
-/* ─── Warning triangle icon — used for rejection notice ─── */
-function WarningTriangleIcon({ size = 16 }) {
-  return (
-    <svg
-      aria-hidden="true"
-      focusable="false"
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M8 2L14.5 13.5H1.5L8 2Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path d="M8 6.5V9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="8" cy="11.5" r="0.75" fill="currentColor" />
-    </svg>
-  );
-}
 
 /* ─── Eye icon (password hidden — show action) ─── */
 function EyeIcon({ size = 20 }) {
@@ -317,47 +285,32 @@ function CircleCheckIcon({ size = 16 }) {
  * symbol rule is now mandatory (circle icons). Safe to prune in a future cleanup pass.
  */
 
-/* ─── Submit messages — count-based, 15 distinct strings (brief 2026-05-26) ─── */
 /*
- * computeSubmitMessage(value, ruleResults) — returns the string to show in the
- * submit message slot, or null if all rules are met (slot should be hidden).
- *
- * Rule order for pair-key construction matches checklist order:
- *   length → numberOrSpecial → uppercase
- * Keys are sorted pairs: 'length+numberOrSpecial', 'length+uppercase',
- * 'numberOrSpecial+uppercase'.
- *
- * See docs/designpowers/copy.md §11.1 for the full table.
- */
-/*
- * Message family (2026-06-08 — 3 rules: length, numberOrSpecial, uppercase).
- * 8 strings total: empty + 3 single + 3 pair + 1 generic. Pair keys are
- * sorted by RULE_ORDER so the unmet-rules array always yields the correct key.
+ * Message family — final-scope rewrite 2026-06-09.
+ * 6 strings: empty + 4 single + 1 generic. With one rule unmet we name it;
+ * with two or more unmet we defer to the checklist below the field.
+ * No pair strings — the simplification is intentional.
  */
 const SUBMIT_MESSAGES = {
   empty: 'Enter a password',
   single: {
-    length:          'Use at least 8 characters',
-    numberOrSpecial: 'Add a number or special character',
-    uppercase:       'Add an uppercase letter',
-  },
-  pair: {
-    'length+numberOrSpecial':          'Use at least 8 characters and add a number or special character',
-    'length+uppercase':                'Use at least 8 characters and add an uppercase letter',
-    'numberOrSpecial+uppercase':       'Add a number or special character and an uppercase letter',
+    length:  'Use at least 8 characters',
+    special: 'Add a special character',
+    number:  'Add a number',
+    letter:  'Add a letter',
   },
   generic: 'Your password needs a few more things',
 };
 
-/* Ordered rule IDs — matches checklist display order; load-bearing for pair keys. */
-const RULE_ORDER = ['length', 'numberOrSpecial', 'uppercase'];
+/* Ordered rule IDs — matches checklist display order. */
+const RULE_ORDER = ['length', 'special', 'number', 'letter'];
 
 function computeSubmitMessage(value, ruleResults) {
   if (!value || value.length === 0) return SUBMIT_MESSAGES.empty;
   const unmet = RULE_ORDER.filter((id) => !ruleResults[id]);
   if (unmet.length === 0) return null;
   if (unmet.length === 1) return SUBMIT_MESSAGES.single[unmet[0]];
-  if (unmet.length === 2) return SUBMIT_MESSAGES.pair[unmet[0] + '+' + unmet[1]];
+  // 2+ unmet → generic, defer to checklist
   return SUBMIT_MESSAGES.generic;
 }
 
@@ -384,35 +337,39 @@ const PasswordField = forwardRef(function PasswordField({
   // Focus tracking for floating label state
   const [isFieldFocused, setIsFieldFocused] = useState(false);
 
-  // Strength state — computed on debounce. Two-state model (2026-05-26).
+  // Rule-evaluation state — computed on debounce. Drives the checklist + the
+  // additive message. No strength meter to feed; segmentsLit is gone.
   const [strengthResult, setStrengthResult] = useState({
     rulesMet:    0,
-    ruleResults: { length: false, numberOrSpecial: false, uppercase: false },
-    segmentsLit: 0,
+    ruleResults: { length: false, special: false, number: false, letter: false },
     isStrong:    false,
     isValid:     false,
   });
 
   // Track which rules were previously met for regression detection
   const [ruleWasMet, setRuleWasMet] = useState({
-    length:          false,
-    numberOrSpecial: false,
-    uppercase:       false,
+    length:  false,
+    special: false,
+    number:  false,
+    letter:  false,
   });
 
   // Server-side external error state
   const [errorMsg, setErrorMsg] = useState(null);
   const [errorDismissing, setErrorDismissing] = useState(false);
 
-  // Blacklist check state
-  // 'idle' | 'checking' | 'accepted' | 'rejected' | 'timeout'
+  // Blacklist check state — preserved behind FEATURES.BLACKLIST_CHECK (off).
   const [blacklistStatus, setBlacklistStatus] = useState('idle');
 
   // Live region string
   const [liveText, setLiveText] = useState('');
 
-  // Tracks previous isStrong value for live region gate (announce only on Weak↔Strong transition)
-  const prevIsStrongRef = useRef(null);
+  // Blur-driven constraint state. Both set in handleBlur; cleared in
+  // handlePasswordChange + setValue when the live value no longer matches.
+  // Precedence in the field-error slot: whitespace > common > additive.
+  const [commonActive, setCommonActive] = useState(false);
+  const [whitespaceActive, setWhitespaceActive] = useState(false);
+
   const debounceRef = useRef(null);
   /* F5 — stagger refs for live region queue */
   const announceTimersRef = useRef([]);
@@ -440,7 +397,6 @@ const PasswordField = forwardRef(function PasswordField({
   const fieldId = `pf-field-${uid}`;
   const helperId = `pf-helper-${uid}`;
   const infoBoxId = `pf-info-${uid}`;
-  const meterDescId = `pf-meter-desc-${uid}`;
   const liveRegionId = `pf-live-${uid}`;
   const errorId = `pf-error-${uid}`;
   const submitMsgId = `pf-submit-msg-${uid}`;
@@ -554,13 +510,11 @@ const PasswordField = forwardRef(function PasswordField({
     }
   }, []);
 
-  // ─── Debounced strength computation — two-state model (2026-05-26) ───
+  // ─── Debounced rule evaluation + per-rule announcements ─────────────────
   const scheduleStrengthUpdate = useCallback((value) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       const result = computeStrength(value);
-      const newIsStrong  = result.isStrong;
-      const oldIsStrong  = prevIsStrongRef.current;
 
       setStrengthResult((prev) => {
         setRuleWasMet((prevWas) => {
@@ -575,29 +529,16 @@ const PasswordField = forwardRef(function PasswordField({
           return next;
         });
 
-        /* F5 — Staggered live region announcements — two-state rewrite */
+        // Staggered per-rule live-region announcements. No strength-change
+        // announcement anymore (no meter to announce); no submit-threshold
+        // announcement either — both retired with the meter.
         if (value.length > 0) {
           announceTimersRef.current.forEach(clearTimeout);
           announceTimersRef.current = [];
 
           const queue = [];
-
-          /*
-           * 1. Strength state change — only on Weak → Strong or Strong → Weak transitions.
-           *    oldIsStrong === null means first evaluation (post-empty field); announce
-           *    the current state so the user hears their starting point.
-           *    The gate prevents re-announcing on every keystroke within the same state.
-           */
-          const isFirstEval = oldIsStrong === null;
-          const isStateChange = !isFirstEval && oldIsStrong !== newIsStrong;
-          if (isStateChange) {
-            const strengthLabel = newIsStrong ? LABEL_STRONG : LABEL_WEAK;
-            queue.push({ msg: COPY.liveRegion.strengthChange(strengthLabel), delay: 0 });
-          }
-
-          /* 2. Rule met / broken — staggered 50ms after strength announcement */
           if (prev.ruleResults) {
-            let ruleOffset = isStateChange ? 50 : 0;
+            let ruleOffset = 0;
             for (const rule of RULES) {
               const wasMetBefore = prev.ruleResults[rule.id];
               const isMetNow     = result.ruleResults[rule.id];
@@ -611,12 +552,6 @@ const PasswordField = forwardRef(function PasswordField({
             }
           }
 
-          /* 3. Submit threshold — announced when crossing into Strong (all 3 rules met) */
-          if (isStateChange && newIsStrong) {
-            const lastDelay = queue.length > 0 ? queue[queue.length - 1].delay + 100 : 0;
-            queue.push({ msg: COPY.liveRegion.submitThreshold, delay: lastDelay });
-          }
-
           queue.forEach(({ msg, delay }) => {
             if (delay === 0) {
               setLiveText(msg);
@@ -627,19 +562,14 @@ const PasswordField = forwardRef(function PasswordField({
           });
         }
 
-        prevIsStrongRef.current = newIsStrong;
         return result;
       });
 
       if (onChange) {
-        // Reported isValid factors in BOTH the additive rules AND the constraint
-        // gates (repeats, common-password). The local strengthResult.isValid
-        // is "all rules met" — useful for the meter — but for the parent's
-        // submission gate we also need to block a constraint failure, so a
-        // password like Password1! (all rules met, but on the common list)
-        // never reports as submittable.
-        const constraintViolated = hasConsecutiveRepeats(value) || isWeakOrCommon(value);
-        onChange(value, result.isValid && !constraintViolated);
+        // Reported isValid is the 4-rule check only. The on-blur constraint
+        // gates (whitespace / common-password) are enforced separately at
+        // submit time in App.jsx — they're not folded into this flag.
+        onChange(value, result.isValid);
       }
     }, 300);
   }, [onChange]);
@@ -676,6 +606,13 @@ const PasswordField = forwardRef(function PasswordField({
         // Reset interaction state when field is fully cleared
         setHasInteracted(false);
         setBorderState('neutral');
+        setCommonActive(false);
+        setWhitespaceActive(false);
+      } else {
+        // Programmatic fill: clear any stale constraint flags that no longer
+        // apply to the new value. Parity with handlePasswordChange.
+        if (commonActive && !isCommonPassword(value)) setCommonActive(false);
+        if (whitespaceActive && !hasLeadingOrTrailingSpace(value)) setWhitespaceActive(false);
       }
       scheduleStrengthUpdate(value);
       // No blacklist call here — check fires on blur or on Next tap via fireBlacklistCheck
@@ -683,6 +620,15 @@ const PasswordField = forwardRef(function PasswordField({
     // markInteracted: called by App.jsx on Next tap with invalid input.
     // Triggers the blur-driven state machine from the submit path.
     markInteracted() {
+      setHasInteracted(true);
+    },
+    // setConstraintFlags: called by App.jsx after the on-tap constraint check
+    // when Next is pressed without a prior blur. Mirrors the state that
+    // handleBlur would have set — surfaces the constraint message in the
+    // field-error slot and turns the underline red via hasInputError.
+    setConstraintFlags({ common, whitespace }) {
+      setCommonActive(Boolean(common));
+      setWhitespaceActive(Boolean(whitespace));
       setHasInteracted(true);
     },
     // When BLACKLIST_CHECK is on: runs the real check (same guards as blur handler).
@@ -754,6 +700,13 @@ const PasswordField = forwardRef(function PasswordField({
       setBlacklistStatus('idle');
     }
 
+    // Constraint state — clear on keystroke once the value no longer matches.
+    // The constraint message disappears immediately when the player edits away
+    // from the rejected password; it only re-appears on the next blur if still
+    // violating.
+    if (commonActive && !isCommonPassword(value)) setCommonActive(false);
+    if (whitespaceActive && !hasLeadingOrTrailingSpace(value)) setWhitespaceActive(false);
+
     scheduleStrengthUpdate(value);
     // No blacklist call here — check fires on blur (handleBlur) or on Next tap
     // via the imperative fireBlacklistCheck handle.
@@ -791,14 +744,20 @@ const PasswordField = forwardRef(function PasswordField({
 
     // ─── On-blur blacklist trigger ───
     // runBlacklistCheck guards internally: non-empty, all rules met, not cached.
-    // We pass the current password value from state (captured in closure at this render).
     // Gated: when BLACKLIST_CHECK is off no call fires.
     if (FEATURES.BLACKLIST_CHECK) {
       runBlacklistCheck(password);
     }
-    // Note: common-password constraint is no longer blur-driven — it's derived
-    // live from the password value (see commonActive in derived state below)
-    // so the meter doesn't lag while typing a known-bad password.
+
+    // ─── On-blur constraint checks (2026-06-09 scope) ───
+    // Treated as if they were async server calls (production swap target).
+    // Precedence whitespace > common is enforced in the constraint-message
+    // derivation; set both flags here so the precedence logic has the latest
+    // truth for both gates.
+    if (password.length > 0) {
+      setWhitespaceActive(hasLeadingOrTrailingSpace(password));
+      setCommonActive(isCommonPassword(password));
+    }
   }
 
   // ─── Toggle ───
@@ -806,60 +765,18 @@ const PasswordField = forwardRef(function PasswordField({
     setIsRevealed((prev) => !prev);
   }
 
-  // ─── Derived state — two-state model (2026-05-26) ───
-  const { ruleResults, segmentsLit, isStrong, isValid } = strengthResult;
-  /*
-   * isForward: true when segments are increasing or stable.
-   * Used to select forward (180ms) vs backward (240ms) transition timing.
-   * prevIsStrongRef holds the last committed isStrong value after debounce.
-   * On first eval (null), treat as forward.
-   */
-  const isForward = prevIsStrongRef.current === null || isStrong || !prevIsStrongRef.current;
-  // User override 2026-05-26: meter track + checklist always visible on page load.
-  const showMeter = true;
-  // Label visible whenever the player has typed any content — paired with the
-  // segmentsLit floor (computeStrength returns at least 1 segment lit when
-  // password.length > 0), so the bar always shows at least one red segment
-  // when the label reads "Weak".
-  const showLabel = hasTyped && password.length > 0;
+  // ─── Derived state ─────────────────────────────────────────────────────────
+  const { ruleResults, isValid } = strengthResult;
 
-  // ─── Constraint gates (2026-06-08) ─────────────────────────────────────────
-  // Both gates derived live from the password value (keystroke-immediate) —
-  // common-password was previously blur-driven to simulate a server call, but
-  // that caused the meter to lag (showing Strong while typing a known-bad
-  // password like Password1! until blur fired). Synchronous local lookup
-  // means the on-blur delay served no purpose other than introducing the lag.
-  // Precedence (when both could show): repeats wins over common.
-  const repeatsActive     = hasConsecutiveRepeats(password);
-  const commonActive      = password.length > 0 && isWeakOrCommon(password);
-  const constraintMessage = repeatsActive
-    ? REJECTION_MESSAGE_REPEATS
+  // ─── Constraint message (blur-driven gates) ───────────────────────────────
+  // Both gates are blur-driven state — the constraint message only appears
+  // after the player leaves the field. Precedence (when both fire):
+  //   whitespace > common > additive
+  const constraintMessage = whitespaceActive
+    ? REJECTION_MESSAGE_WHITESPACE
     : commonActive
       ? REJECTION_MESSAGE_COMMON
       : null;
-
-  // Meter state — three internal values, two visible labels:
-  //   'strong'        → all 3 rules met, no constraint violated → 3 green + "Strong"
-  //   'not-accepted'  → all 3 rules met BUT a constraint gate is violated → renders
-  //                     visually identical to Weak (1 red segment + "Weak" label).
-  //                     The state is preserved as an internal flag so future logic
-  //                     (e.g. submit-blocking) can distinguish it from regular Weak.
-  //   'weak'          → anything else (fewer than 3 rules met)
-  // The player-facing rejection signal is carried by the error slot copy
-  // and the red field border — not by a third meter label.
-  const meterState =
-    isStrong && (repeatsActive || commonActive)
-      ? 'not-accepted'
-      : isStrong
-        ? 'strong'
-        : 'weak';
-
-  // Visual collapse: not-accepted and weak both render as Weak. effectiveStrong
-  // is the single source of truth the segments + label render against — keeps
-  // the meterState string available for any future non-visual consumer.
-  const effectiveStrong   = meterState === 'strong';
-  const effectiveSegments = meterState === 'not-accepted' ? 1 : segmentsLit;
-  const meterLabel        = effectiveStrong ? LABEL_STRONG : LABEL_WEAK;
 
   // Floating label lift condition
   const primaryLifted = isFieldFocused || password.length > 0;
@@ -925,17 +842,7 @@ const PasswordField = forwardRef(function PasswordField({
         {liveText}
       </div>
 
-      {/* ─── Hidden meter description (updated for aria-describedby) ─── */}
-      {/* Two-state rewrite: tierDescriptions gone; Weak/Strong only (2026-05-26) */}
-      <div id={meterDescId} className="sr-only">
-        {showLabel
-          ? (isStrong
-              ? 'Your password is very hard to guess. You\'re ready to go.'
-              : 'Your password is easy to guess. Keep going — the checklist below shows what to add.')
-          : 'Enter a password to see its strength.'}
-      </div>
-
-      {/* ─── Helper text — sr-only; meter+checklist replace visual helper ─── */}
+      {/* ─── Helper text — sr-only; the checklist is the visible helper now ─── */}
       <p id={helperId} className="sr-only">
         {COPY.helper[context]}
       </p>
@@ -1060,78 +967,8 @@ const PasswordField = forwardRef(function PasswordField({
         </div>
       )}
 
-      {/* ─── Meter row ─── */}
-      <div
-        className={['pf-meter-track', showMeter ? 'pf-meter-track--visible' : ''].join(' ')}
-      >
-        <div className="pf-meter-row">
-          {/* Tier label — above the bar; absent before first keystroke.
-              Slot is always reserved (pf-meter-label-slot, min-height: 18px) so
-              the bar does not shift down when the label appears on first keystroke.
-              DOM order: label first, bar second — screen readers hear "Weak/Strong"
-              before encountering the progress bar, natural reading order.
-              aria-hidden="true" on the <span>: the polite live region in the sr-only
-              div above handles strength announcements; this visual span is decorative. */}
-          <div className="pf-meter-label-slot">
-            <span
-              className={[
-                'pf-meter-label',
-                showLabel
-                  ? (effectiveStrong ? 'pf-meter-label--strong' : 'pf-meter-label--weak')
-                  : '',
-                !showLabel ? 'pf-meter-label--hidden' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              aria-hidden="true"
-            >
-              {showLabel ? meterLabel : ''}
-            </span>
-          </div>
-
-          {/* Meter bar */}
-          {/* ─── Meter bar — 3 segments, two-state model (2026-05-26) ─── */}
-          {/*
-           * aria-valuemax: 3 (segments, not tiers)
-           * aria-valuenow: segmentsLit (0–3) when user has typed, else 0
-           * aria-valuetext: 'Strong' | 'Weak' | 'Not rated yet'
-           *
-           * Segment class logic:
-           *   isActive = hasTyped && password.length > 0 && segIndex < segmentsLit
-           *   (segIndex is 0-based; segmentsLit is 1-based count — so seg 0 active when segmentsLit >= 1)
-           *   Active + isStrong → pf-meter-segment--strong (green)
-           *   Active + !isStrong → pf-meter-segment--progress (grey higher-emphasis)
-           *   Backward transition: pf-meter-segment--backward modifier
-           *
-           * State change effect (2→3 rules): all 3 segments crossfade red→green simultaneously
-           * because all share the same isStrong flag — no per-segment stagger needed.
-           */}
-          <div
-            role="meter"
-            aria-label="Password strength"
-            aria-valuemin={0}
-            aria-valuemax={3}
-            aria-valuenow={hasTyped && password.length > 0 ? effectiveSegments : 0}
-            aria-valuetext={showLabel ? meterLabel : 'Not rated yet'}
-            aria-describedby={meterDescId}
-            className="pf-meter-bar"
-          >
-            {[0, 1, 2].map((segIndex) => {
-              const isActive = hasTyped && password.length > 0 && segIndex < effectiveSegments;
-              const segClass = ['pf-meter-segment'];
-              if (isActive) {
-                segClass.push(effectiveStrong ? 'pf-meter-segment--strong' : 'pf-meter-segment--progress');
-                if (!isForward) segClass.push('pf-meter-segment--backward');
-              }
-              return (
-                <div
-                  key={segIndex}
-                  className={segClass.join(' ')}
-                />
-              );
-            })}
-          </div>
-        </div>
+      {/* Strength meter removed 2026-06-09 — checklist below is the only
+          typing-state indicator now. */}
 
         {/* ─── Checklist card (Figma 22017-1454 update) ───
             #fafafa background, 8px radius, 12px padding all sides,
@@ -1188,44 +1025,8 @@ const PasswordField = forwardRef(function PasswordField({
           </p>
         </div>
 
-        {/* ─── SLOT 2: Inline rejection notice ─────────────────────────────
-            BLACKLIST_CHECK flag controls whether this slot renders at all.
-            When false: null — no DOM node, no reserved space, no CLS risk
-              (CLS is only a concern when the notice can actually appear; with
-              the flag off it can never appear, so no slot is needed).
-              CSS for .pf-rejection-notice and its sub-elements is preserved
-              in PasswordField.css — see the comment block above those rules.
-            When true: reserved layout slot, always rendered, visibility toggled.
-              Empty: aria-hidden="true", no visible content. Zero layout shift.
-              Visible (.pf-rejection-notice--visible): role="status" aria-live="polite".
-            ─────────────────────────────────────────────────────────────── */}
-        {FEATURES.BLACKLIST_CHECK && (() => {
-          const isRejected = blacklistStatus === 'rejected';
-          return (
-            <div
-              id={rejectionNoticeId}
-              {...(isRejected ? { role: 'status', 'aria-live': 'polite' } : {})}
-              aria-hidden={isRejected ? undefined : 'true'}
-              className={['pf-rejection-notice', isRejected ? 'pf-rejection-notice--visible' : ''].filter(Boolean).join(' ')}
-              style={{ marginTop: 'var(--space-lg, 16px)' }}
-            >
-              {isRejected && (
-                <>
-                  {/* Row 1: icon + status label */}
-                  <div className="pf-rejection-notice__header">
-                    <span className="pf-rejection-notice__icon" aria-hidden="true">
-                      <WarningTriangleIcon size={16} />
-                    </span>
-                    <span className="pf-rejection-notice__label">Not accepted</span>
-                  </div>
-                  {/* Row 2: supporting text, indented to align with label */}
-                  <p className="pf-rejection-notice__body">{COPY.rejectionNotice}</p>
-                </>
-              )}
-            </div>
-          );
-        })()}
-      </div>
+      {/* Old inline rejection notice removed 2026-06-09 — constraint messages
+          (whitespace / common-password) now share the field-error slot above. */}
 
     </div>
   );

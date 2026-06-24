@@ -1,39 +1,27 @@
 /**
- * useStrength — two-state meter rewrite 2026-05-26.
+ * useStrength → computeStrength (legacy name retained for call-site stability)
  *
- * SUPERSEDES: prior zxcvbn-based hook (four-tier Weak/Fair/Good/Strong + zxcvbn score).
- * zxcvbn-ts removed entirely. Strength is now determined purely by rule evaluation.
+ * Final-scope rewrite 2026-06-09. The strength METER is gone — no segments,
+ * no Weak/Strong label, no progress visual. The checklist (driven by
+ * ruleResults) is the only typing-state indicator now.
  *
- * The model (2026-06-08):
- *   - 3 rules evaluated (length, numberOrSpecial, uppercase) — lowercase
- *     removed earlier; number+special collapsed into one OR rule; uppercase
- *     re-added as the third additive rule
- *   - rulesMet: count of met rules (0–3)
- *   - segmentsLit: floored at 1 once the password has any content, so typing
- *     the first character lights one red segment even before any rule is met:
- *       empty       → 0 of 3 lit (track only, label hidden)
- *       0 rules     → 1 of 3 lit (red progress, label "Weak")
- *       1 rule      → 1 of 3 lit (red progress, label "Weak")
- *       2 rules     → 2 of 3 lit (red progress, label "Weak")
- *       3 rules     → 3 of 3 lit (green, isStrong = true, label "Strong")
- *   - isStrong: rulesMet === 3 (all rules)
- *   - isValid:  same as isStrong (submission gate)
+ * What's left:
+ *   - ruleResults: per-rule booleans for the checklist
+ *   - rulesMet:    count of met rules (0–4)
+ *   - isStrong:    all 4 rules met (still used to gate submission)
+ *   - isValid:     alias of isStrong; reported to App.jsx via onChange
  *
- * Returns: {
- *   rulesMet:    number (0–3),
- *   ruleResults: { length, numberOrSpecial, uppercase } — booleans,
- *   segmentsLit: 0 | 1 | 2 | 3,
- *   isStrong:    boolean,
- *   isValid:     boolean,
- * }
+ * No `segmentsLit`, no `categoriesMet`, no constraint-aware isValid (the
+ * common-password gate is enforced separately at blur / submit time).
  */
 
 import { evaluateRules, allMandatoryMet } from '../components/rules.js';
 
 const EMPTY_RULE_RESULTS = {
-  length:          false,
-  numberOrSpecial: false,
-  uppercase:       false,
+  length:  false,
+  special: false,
+  number:  false,
+  letter:  false,
 };
 
 export function computeStrength(password) {
@@ -41,7 +29,6 @@ export function computeStrength(password) {
     return {
       rulesMet:    0,
       ruleResults: { ...EMPTY_RULE_RESULTS },
-      segmentsLit: 0,
       isStrong:    false,
       isValid:     false,
     };
@@ -49,17 +36,11 @@ export function computeStrength(password) {
 
   const ruleResults = evaluateRules(password);
   const rulesMet    = Object.values(ruleResults).filter(Boolean).length;
-  const isStrong    = allMandatoryMet(ruleResults); // all 3 rules met
-
-  // Floor at 1 once the password has content — typing the first character
-  // lights one segment even before any rule is met. Empty input keeps the
-  // bar at 0 (handled by the early return above).
-  const segmentsLit = Math.max(1, rulesMet);
+  const isStrong    = allMandatoryMet(ruleResults);
 
   return {
     rulesMet,
     ruleResults,
-    segmentsLit,
     isStrong,
     isValid: isStrong,
   };
