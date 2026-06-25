@@ -974,10 +974,6 @@ const PasswordField = forwardRef(function PasswordField({
             #fafafa background, 8px radius, 12px padding all sides,
             12px gap between header → rules → footer */}
         <div className="pf-checklist-card">
-          <p className="pf-checklist-card-header">
-            Make your password hard to guess. It needs:
-          </p>
-
           <ul
             className="pf-checklist"
             aria-label="Password requirements"
@@ -1019,11 +1015,14 @@ const PasswordField = forwardRef(function PasswordField({
               );
             })}
           </ul>
-
-          <p className="pf-checklist-card-footer">
-            Hard to guess means skipping the obvious: your name, birthday or sequences like 1234
-          </p>
         </div>
+
+        {/* Footer hint — sits BELOW and OUTSIDE the checklist card per Figma
+            22451:2596. Same Figtree 14/20 medium copy as before, just lifted
+            out so the card holds only the rules. */}
+        <p className="pf-checklist-helper">
+          Avoid obvious choices like your name, birthday, or sequences like 1234
+        </p>
 
       {/* Old inline rejection notice removed 2026-06-09 — constraint messages
           (whitespace / common-password) now share the field-error slot above. */}
