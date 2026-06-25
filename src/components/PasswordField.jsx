@@ -1021,7 +1021,7 @@ const PasswordField = forwardRef(function PasswordField({
             22451:2596. Same Figtree 14/20 medium copy as before, just lifted
             out so the card holds only the rules. */}
         <p className="pf-checklist-helper">
-          Avoid obvious choices like your name, birthday, or sequences like 1234
+          Avoid obvious choices like your name, birthday, or sequences like 1234.
         </p>
 
       {/* Old inline rejection notice removed 2026-06-09 — constraint messages
